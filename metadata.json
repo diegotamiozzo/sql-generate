@@ -1,0 +1,6 @@
+{
+  "name": "Explorador e Gerador SQL Inteligente",
+  "description": "Explorar bancos de dados, visualizar tabelas e gerar comandos SQL usando linguagem natural através da inteligência artificial do Gemini.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
