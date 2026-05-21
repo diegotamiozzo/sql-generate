@@ -18,7 +18,7 @@ import {
   Hash,
   Eye,
   Menu,
-  SquareTerminal
+  SquareTerminal,
 } from "lucide-react";
 
 export default function App() {
@@ -63,15 +63,31 @@ export default function App() {
 
   // Preset prompts for quick clicking!
   const presetPrompts = [
-    { label: "📍 10 últimos registros", prompt: "Como posso extrair as 10 últimas linhas desta tabela?" },
-    { label: "📊 Contar total", prompt: "Qual comando SQL para contar o total de linhas desta tabela?" },
-    { label: "🔍 Buscar duplicados", prompt: "Como posso identificar registros duplicados ou repetidos nesta tabela?" },
-    { label: "📅 Criados hoje / recentes", prompt: "Como selecionar os registros mais recentes ordenados por data ou id?" },
+    {
+      label: " 10 últimos registros",
+      prompt: "Como posso extrair as 10 últimas linhas desta tabela?",
+    },
+    {
+      label: " Contar total",
+      prompt: "Qual comando SQL para contar o total de linhas desta tabela?",
+    },
+    {
+      label: " Buscar duplicados",
+      prompt:
+        "Como posso identificar registros duplicados ou repetidos nesta tabela?",
+    },
+    {
+      label: " Criados hoje / recentes",
+      prompt:
+        "Como selecionar os registros mais recentes ordenados por data ou id?",
+    },
   ];
 
   // Try to connect of startup automatically with standard credentials
   useEffect(() => {
-    handleConnect();
+    if (dbConfig.host !== "") {
+      handleConnect();
+    }
   }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,13 +110,21 @@ export default function App() {
         setDatabases(data.databases);
         setIsConnected(true);
         setConnectionInfo(data.serverInfo);
-        
+
         // Auto-select first database if available
         if (data.databases && data.databases.length > 0) {
-          const autoDb = data.databases.includes("informacao") 
-            ? "informacao" 
-            : data.databases.find((d: string) => !["information_schema", "mysql", "performance_schema", "sys"].includes(d.toLowerCase())) || data.databases[0];
-          
+          const autoDb = data.databases.includes("informacao")
+            ? "informacao"
+            : data.databases.find(
+                (d: string) =>
+                  ![
+                    "information_schema",
+                    "mysql",
+                    "performance_schema",
+                    "sys",
+                  ].includes(d.toLowerCase()),
+              ) || data.databases[0];
+
           setSelectedDatabase(autoDb);
           fetchTables(autoDb);
         }
@@ -111,7 +135,9 @@ export default function App() {
     } catch (err: any) {
       console.error(err);
       setIsConnected(false);
-      setErrorMsg("O servidor de retaguarda não respondeu. Certifique-se de que o backend está ativo.");
+      setErrorMsg(
+        "O servidor de retaguarda não respondeu. Certifique-se de que o backend está ativo.",
+      );
     } finally {
       setIsConnecting(false);
     }
@@ -153,7 +179,11 @@ export default function App() {
       const response = await fetch("/api/db/schema", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...dbConfig, database: dbName, table: tableName }),
+        body: JSON.stringify({
+          ...dbConfig,
+          database: dbName,
+          table: tableName,
+        }),
       });
       const data = await response.json();
 
@@ -202,12 +232,16 @@ export default function App() {
   const generateSql = async (customPrompt?: string) => {
     const actualPrompt = customPrompt || promptInput;
     if (!actualPrompt.trim()) {
-      setErrorMsg("Por favor, digite uma pergunta ou selecione um rascunho rápido.");
+      setErrorMsg(
+        "Por favor, digite uma pergunta ou selecione um rascunho rápido.",
+      );
       return;
     }
 
     if (!selectedDatabase || !selectedTable) {
-      setErrorMsg("Por favor, selecione um banco de dados e uma tabela primeiro.");
+      setErrorMsg(
+        "Por favor, selecione um banco de dados e uma tabela primeiro.",
+      );
       return;
     }
 
@@ -236,7 +270,9 @@ export default function App() {
         setSqlExplanation(data.explanation);
         setSqlSuggestions(data.suggestions);
       } else {
-        setErrorMsg(data.message || "Falha na geração com Inteligência Artificial.");
+        setErrorMsg(
+          data.message || "Falha na geração com Inteligência Artificial.",
+        );
       }
     } catch (err) {
       setErrorMsg("Erro no processamento da IA do Gemini.");
@@ -296,15 +332,21 @@ export default function App() {
               <span className="sr-only">Database</span>
             </div>
             <div>
-              <h1 className="text-lg font-bold text-slate-900 leading-tight">Explorador e Gerador SQL Inteligente</h1>
-              <p className="text-xs text-slate-500 font-medium">Bancos de Dados</p>
+              <h1 className="text-lg font-bold text-slate-900 leading-tight">
+                Explorador e Gerador SQL Inteligente
+              </h1>
+              <p className="text-xs text-slate-500 font-medium">
+                Bancos de Dados
+              </p>
             </div>
           </div>
 
           <div className="flex items-center space-x-4">
             {/* Connection Status indicator badge */}
             <div className="flex items-center space-x-2">
-              <span className={`h-2.5 w-2.5 rounded-full ${isConnected ? "bg-emerald-500 animate-pulse" : "bg-rose-400"}`}></span>
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${isConnected ? "bg-emerald-500 animate-pulse" : "bg-rose-400"}`}
+              ></span>
               <span className="text-xs font-semibold text-slate-600 hidden sm:inline-block">
                 {isConnected ? `Conectado ao MariaDB` : "Desconectado"}
               </span>
@@ -317,7 +359,11 @@ export default function App() {
             >
               <Settings className="h-3.5 w-3.5" />
               <span>Configuração</span>
-              {isConfigOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              {isConfigOpen ? (
+                <ChevronUp className="h-3 w-3" />
+              ) : (
+                <ChevronDown className="h-3 w-3" />
+              )}
             </button>
           </div>
         </div>
@@ -333,7 +379,9 @@ export default function App() {
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Host do Servidor (IP / URI)</label>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">
+                  Host do Servidor (IP / URI)
+                </label>
                 <input
                   type="text"
                   name="host"
@@ -344,7 +392,9 @@ export default function App() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Usuário</label>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">
+                  Usuário
+                </label>
                 <input
                   type="text"
                   name="user"
@@ -355,7 +405,9 @@ export default function App() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Senha</label>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">
+                  Senha
+                </label>
                 <input
                   type="password"
                   name="password"
@@ -366,7 +418,9 @@ export default function App() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Porta</label>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">
+                  Porta
+                </label>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -381,7 +435,11 @@ export default function App() {
                     disabled={isConnecting}
                     className="px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold text-xs rounded-lg transition-colors flex items-center justify-center gap-1 min-w-25 shadow"
                   >
-                    {isConnecting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : "Conectar"}
+                    {isConnecting ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      "Conectar"
+                    )}
                   </button>
                 </div>
               </div>
@@ -395,21 +453,23 @@ export default function App() {
 
       {/* Main Grid Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col md:grid md:grid-cols-12 gap-8">
-        
         {/* Error Notification Alert */}
         {errorMsg && (
           <div className="md:col-span-12 bg-rose-50 border-l-4 border-rose-500 p-4 rounded-xl flex items-start space-x-3 mb-4 shadow-sm">
             <AlertCircle className="h-5 w-5 text-rose-500 shrink-0 mt-0.5" />
             <div className="flex-1">
-              <h4 className="text-sm font-bold text-rose-800">Atenção / Ocorreu um contratempo</h4>
-              <p className="text-xs text-rose-700 mt-1 font-medium">{errorMsg}</p>
+              <h4 className="text-sm font-bold text-rose-800">
+                Atenção / Ocorreu um contratempo
+              </h4>
+              <p className="text-xs text-rose-700 mt-1 font-medium">
+                {errorMsg}
+              </p>
             </div>
           </div>
         )}
 
         {/* COL 1: SIDEBAR (Database & Table Selectors + Schema Structure) - span 4 / 12 */}
         <section className="md:col-span-4 flex flex-col space-y-6">
-          
           {/* Databases & Tables selection Card */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
             <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wide">
@@ -419,7 +479,9 @@ export default function App() {
 
             {/* Database Dropdown */}
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1.5">Banco de Dados</label>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+                Banco de Dados
+              </label>
               <div className="relative">
                 <select
                   disabled={!isConnected || isConnecting}
@@ -447,7 +509,9 @@ export default function App() {
 
             {/* Table Dropdown */}
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1.5">Tabela</label>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+                Tabela
+              </label>
               <div className="relative">
                 <select
                   disabled={!isConnected || tables.length === 0}
@@ -513,7 +577,9 @@ export default function App() {
               ) : !selectedTable ? (
                 <div className="flex flex-col items-center justify-center text-center h-full py-12 px-6 text-slate-400 space-y-2">
                   <span className="sr-only">Table</span>
-                  <p className="text-xs font-medium">Selecione uma tabela para carregar sua estrutura & dados</p>
+                  <p className="text-xs font-medium">
+                    Selecione uma tabela para carregar sua estrutura & dados
+                  </p>
                 </div>
               ) : activeTab === "schema" ? (
                 /* Columns Listing */
@@ -524,8 +590,12 @@ export default function App() {
                       className="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors border border-slate-100"
                     >
                       <div className="flex items-center space-x-2.5">
-                        <Hash className={`h-3.5 w-3.5 ${col.key === "PRI" ? "text-amber-500" : "text-slate-400"}`} />
-                        <span className="text-xs font-bold text-slate-700 font-mono">{col.field}</span>
+                        <Hash
+                          className={`h-3.5 w-3.5 ${col.key === "PRI" ? "text-amber-500" : "text-slate-400"}`}
+                        />
+                        <span className="text-xs font-bold text-slate-700 font-mono">
+                          {col.field}
+                        </span>
                       </div>
                       <div className="flex items-center space-x-1.5">
                         <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded">
@@ -544,7 +614,9 @@ export default function App() {
                 /* Raw Preview rows (First 5 records like the Python sample!) */
                 <div className="space-y-4">
                   {previewRows.length === 0 ? (
-                    <p className="text-xs text-slate-500 text-center py-6">Tabela vazia ou sem registros para exibir.</p>
+                    <p className="text-xs text-slate-500 text-center py-6">
+                      Tabela vazia ou sem registros para exibir.
+                    </p>
                   ) : (
                     previewRows.map((row, idx) => (
                       <div
@@ -553,16 +625,29 @@ export default function App() {
                       >
                         <div className="text-[10px] font-bold text-indigo-500 border-b border-indigo-100 pb-1 mb-1 bg-indigo-50/50 px-1.5 py-0.5 rounded flex items-center justify-between">
                           <span>REGISTRO #{idx + 1}</span>
-                          <span className="font-mono text-[9px] text-slate-400">INDEX</span>
+                          <span className="font-mono text-[9px] text-slate-400">
+                            INDEX
+                          </span>
                         </div>
-                        {Object.entries(row).map(([key, val]: [string, any]) => (
-                          <div key={key} className="flex flex-col text-xs leading-tight">
-                            <span className="font-semibold text-slate-500 font-mono text-[10px]">{key}:</span>
-                            <span className="text-slate-800 font-medium pl-1 wrap-break-word">
-                              {val === null ? <em className="text-slate-400">null</em> : String(val)}
-                            </span>
-                          </div>
-                        ))}
+                        {Object.entries(row).map(
+                          ([key, val]: [string, any]) => (
+                            <div
+                              key={key}
+                              className="flex flex-col text-xs leading-tight"
+                            >
+                              <span className="font-semibold text-slate-500 font-mono text-[10px]">
+                                {key}:
+                              </span>
+                              <span className="text-slate-800 font-medium pl-1 wrap-break-word">
+                                {val === null ? (
+                                  <em className="text-slate-400">null</em>
+                                ) : (
+                                  String(val)
+                                )}
+                              </span>
+                            </div>
+                          ),
+                        )}
                       </div>
                     ))
                   )}
@@ -574,7 +659,6 @@ export default function App() {
 
         {/* COL 2: MAIN PANEL (AI Query Workspace + Test Execution) - span 8 / 12 */}
         <section className="md:col-span-8 flex flex-col space-y-6">
-          
           {/* AI SQL Generating Card */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col space-y-5">
             <div className="flex items-center justify-between">
@@ -584,14 +668,19 @@ export default function App() {
               </h2>
               {selectedTable && (
                 <div className="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md">
-                  Target: <span className="font-mono text-slate-800 font-bold">{selectedTable}</span>
+                  Target:{" "}
+                  <span className="font-mono text-slate-800 font-bold">
+                    {selectedTable}
+                  </span>
                 </div>
               )}
             </div>
 
             {/* Preset prompt pills */}
             <div className="space-y-1.5">
-              <span className="text-xs font-bold text-slate-400 block">Opções de Perguntas Rápidas:</span>
+              <span className="text-xs font-bold text-slate-400 block">
+                Opções de Perguntas Rápidas:
+              </span>
               <div className="flex flex-wrap gap-2">
                 {presetPrompts.map((p, idx) => (
                   <button
@@ -622,7 +711,9 @@ export default function App() {
                 <div className="flex justify-end">
                   <button
                     onClick={() => generateSql()}
-                    disabled={!selectedTable || !promptInput.trim() || isGenerating}
+                    disabled={
+                      !selectedTable || !promptInput.trim() || isGenerating
+                    }
                     className="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 font-semibold text-xs text-white rounded-xl transition-colors shadow-lg hover:shadow-indigo-100 flex items-center gap-1.5 cursor-pointer"
                   >
                     {isGenerating ? (
@@ -645,13 +736,14 @@ export default function App() {
           {/* AI SQL Output View (Only displays if SQL is generated) */}
           {generatedSql && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col space-y-6 animate-fadeIn pb-6">
-              
               {/* Header card view of Code */}
               <div className="bg-slate-950 p-5 p-r-8 flex flex-col space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                   <div className="flex items-center gap-2">
                     <Terminal className="h-4 w-4 text-emerald-400" />
-                    <span className="text-xs font-bold text-slate-300 tracking-wider uppercase">Comando SQL Gerado</span>
+                    <span className="text-xs font-bold text-slate-300 tracking-wider uppercase">
+                      Comando SQL Gerado
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     {/* Copy Button */}
@@ -662,7 +754,9 @@ export default function App() {
                       {copied ? (
                         <>
                           <Check className="h-3.5 w-3.5 text-emerald-400" />
-                          <span className="text-emerald-400 font-bold">Copiado!</span>
+                          <span className="text-emerald-400 font-bold">
+                            Copiado!
+                          </span>
                         </>
                       ) : (
                         <>
@@ -705,7 +799,9 @@ export default function App() {
               <div className="px-6 space-y-4">
                 <div className="flex items-center gap-2 text-slate-800 border-b border-slate-100 pb-2">
                   <BookOpen className="h-4 w-4 text-indigo-500" />
-                  <h3 className="text-sm font-bold text-slate-800">Explicação do Funcionamento</h3>
+                  <h3 className="text-sm font-bold text-slate-800">
+                    Explicação do Funcionamento
+                  </h3>
                 </div>
                 <p className="text-xs text-slate-600 font-medium leading-relaxed pl-1">
                   {sqlExplanation}
@@ -717,11 +813,16 @@ export default function App() {
                 <div className="px-6 space-y-2">
                   <div className="flex items-center gap-2 text-slate-800 border-b border-slate-100 pb-2">
                     <Lightbulb className="h-4 w-4 text-amber-500" />
-                    <h3 className="text-sm font-bold text-slate-800">Dicas & Recomendações Técnicas</h3>
+                    <h3 className="text-sm font-bold text-slate-800">
+                      Dicas & Recomendações Técnicas
+                    </h3>
                   </div>
                   <ul className="list-disc list-inside space-y-1.5 pl-1.5">
                     {sqlSuggestions.map((sug, idx) => (
-                      <li key={idx} className="text-xs text-slate-600 font-medium">
+                      <li
+                        key={idx}
+                        className="text-xs text-slate-600 font-medium"
+                      >
                         {sug}
                       </li>
                     ))}
@@ -739,7 +840,10 @@ export default function App() {
                     </h3>
                     {queryCount !== null && (
                       <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full">
-                        {queryCount} {queryCount === 1 ? "registro encontrado" : "registros encontrados"}
+                        {queryCount}{" "}
+                        {queryCount === 1
+                          ? "registro encontrado"
+                          : "registros encontrados"}
                       </span>
                     )}
                   </div>
@@ -751,7 +855,8 @@ export default function App() {
                     </div>
                   ) : queryRows.length === 0 ? (
                     <div className="bg-slate-50 border border-slate-200 text-slate-500 p-8 rounded-xl text-center text-xs font-medium">
-                      A consulta foi executada com sucesso, mas retornou zero registros.
+                      A consulta foi executada com sucesso, mas retornou zero
+                      registros.
                     </div>
                   ) : (
                     /* Elegant results table with scroll headers */
@@ -761,7 +866,10 @@ export default function App() {
                           <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 font-mono text-[10px] font-bold text-slate-500 uppercase">
                             <tr>
                               {Object.keys(queryRows[0]).map((header) => (
-                                <th key={header} className="p-3 whitespace-nowrap bg-slate-50">
+                                <th
+                                  key={header}
+                                  className="p-3 whitespace-nowrap bg-slate-50"
+                                >
                                   {header}
                                 </th>
                               ))}
@@ -769,10 +877,22 @@ export default function App() {
                           </thead>
                           <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
                             {queryRows.map((row, rIdx) => (
-                              <tr key={rIdx} className="hover:bg-slate-50/50 transition-colors">
+                              <tr
+                                key={rIdx}
+                                className="hover:bg-slate-50/50 transition-colors"
+                              >
                                 {Object.values(row).map((val: any, cIdx) => (
-                                  <td key={cIdx} className="p-3 whitespace-nowrap font-mono max-w-50 truncate">
-                                    {val === null ? <span className="text-slate-400 italic">null</span> : String(val)}
+                                  <td
+                                    key={cIdx}
+                                    className="p-3 whitespace-nowrap font-mono max-w-50 truncate"
+                                  >
+                                    {val === null ? (
+                                      <span className="text-slate-400 italic">
+                                        null
+                                      </span>
+                                    ) : (
+                                      String(val)
+                                    )}
                                   </td>
                                 ))}
                               </tr>
@@ -792,8 +912,13 @@ export default function App() {
       {/* Humble Footer with instructions */}
       <footer className="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-400 font-medium shrink-0">
         <div className="max-w-7xl mx-auto px-4">
-          <p>© 2026 SQL AI Assistant. Desenvolvido para exploração e engenharia rápida de bancos de dados.</p>
-          <p className="mt-1 font-semibold text-indigo-400">Desenvolvido por Diego Tamiozzo</p>
+          <p>
+            © 2026 SQL AI Assistant. Desenvolvido para exploração e engenharia
+            rápida de bancos de dados.
+          </p>
+          <p className="mt-1 font-semibold text-indigo-400">
+            Desenvolvido por Diego Tamiozzo
+          </p>
         </div>
       </footer>
     </div>
