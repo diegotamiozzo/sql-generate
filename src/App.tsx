@@ -63,16 +63,11 @@ export default function App() {
 
   // Preset prompts for quick clicking!
   const presetPrompts = [
-    { label: "📍 10 últimos registros", prompt: "Como posso extrair as 10 últimas linhas desta tabela?" },
-    { label: "📊 Contar total", prompt: "Qual comando SQL para contar o total de linhas desta tabela?" },
-    { label: "🔍 Buscar duplicados", prompt: "Como posso identificar registros duplicados ou repetidos nesta tabela?" },
-    { label: "📅 Criados hoje / recentes", prompt: "Como selecionar os registros mais recentes ordenados por data ou id?" },
+    { label: " 10 últimos registros", prompt: "Como posso extrair as 10 últimas linhas desta tabela?" },
+    { label: " Contar total", prompt: "Qual comando SQL para contar o total de linhas desta tabela?" },
+    { label: " Buscar duplicados", prompt: "Como posso identificar registros duplicados ou repetidos nesta tabela?" },
+    { label: " Criados hoje / recentes", prompt: "Como selecionar os registros mais recentes ordenados por data ou id?" },
   ];
-
-  // Try to connect of startup automatically with standard credentials
-  useEffect(() => {
-    handleConnect();
-  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
