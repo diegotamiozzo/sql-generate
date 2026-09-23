@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import mysql from "mysql2/promise";
-import { GoogleGenAI, Type } from "@google/genai";
+import Groq from "groq-sdk";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -133,7 +133,6 @@ app.post("/api/db/schema", async (req, res) => {
     }
 
     // Validação estrita do nome da tabela (permite apenas letras, números e underscores)
-    // Isso mitiga completamente falhas de injeção de SQL por strings maliciosas passadas na URL/Body
     const safeTableRegex = /^[a-zA-Z0-9_]+$/;
     if (!safeTableRegex.test(table)) {
       return res
@@ -177,7 +176,7 @@ app.post("/api/db/schema", async (req, res) => {
   }
 });
 
-// 4. API: Generate SQL prompt using Gemini
+// 4. API: Generate SQL prompt using Groq (com openai/gpt-oss-20b)
 app.post("/api/db/generate-sql", async (req, res) => {
   try {
     const { database, table, columns, preview, prompt } = req.body;
@@ -188,16 +187,17 @@ app.post("/api/db/generate-sql", async (req, res) => {
         .json({ success: false, message: "Pergunta/prompt é obrigatório." });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
       return res.status(500).json({
         success: false,
         message:
-          "Chave do Gemini (GEMINI_API_KEY) não configurada no ambiente do servidor (.env).",
+          "Chave da API do Groq (GROQ_API_KEY) não configurada no ambiente do servidor (.env).",
       });
     }
 
-    const geminiAi = new GoogleGenAI({ apiKey });
+    // Inicializa o cliente do Groq
+    const groq = new Groq({ apiKey });
 
     const columnsContext =
       columns && Array.isArray(columns)
@@ -213,8 +213,9 @@ app.post("/api/db/generate-sql", async (req, res) => {
       ? JSON.stringify(preview, null, 2)
       : "Sem dados de prévia";
 
-    const promptText = `
-Você é um desenvolvedor e administrador de banco de dados especialista em MariaDB e MySQL SQL.
+    const systemPrompt = `Você é um desenvolvedor e administrador de banco de dados especialista em MariaDB e MySQL SQL. Você DEVE responder estritamente no formato JSON puro, contendo exatamente as chaves: "sql" (string com a consulta SQL válida), "explanation" (string com a explicação em português) e "suggestions" (array de strings com sugestões). Não inclua blocos de código markdown como \`\`\`json.`;
+
+    const userPromptText = `
 Com base no banco de dados "${database}" e na tabela "${table}", com as seguintes colunas existentes:
 [${columnsContext}]
 
@@ -231,66 +232,34 @@ Importante:
 4. Dê opiniões úteis ou sugestões de otimização/relacionadas na lista de sugestões.
 `;
 
-    const response = await geminiAi.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: promptText,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            sql: {
-              type: Type.STRING,
-              description:
-                "A consulta SQL válida, pronta para ser executada no MariaDB/MySQL. Sem formatação em markdown, limpa.",
-            },
-            explanation: {
-              type: Type.STRING,
-              description:
-                "Explicação detalhada e didática do comando, escrita em português brasileiro.",
-            },
-            suggestions: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description:
-                "Lista de 1 a 3 sugestões, variações ou avisos úteis sobre a consulta, em português.",
-            },
-          },
-          required: ["sql", "explanation", "suggestions"],
-        },
-      },
+    const chatCompletion = await groq.chat.completions.create({
+      model: "openai/gpt-oss-20b",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPromptText }
+      ],
+      temperature: 0.1,
+      response_format: { type: "json_object" }
     });
 
-    let resultText = response.text || "{}";
+    let resultText = chatCompletion.choices[0]?.message?.content || "{}";
+    
     const cleanedText = resultText
       .trim()
       .replace(/^```json\s*/i, "")
       .replace(/```$/, "")
       .trim();
-    let resultJson;
 
+    let resultJson;
     try {
       resultJson = JSON.parse(cleanedText);
     } catch (parseError) {
-      console.warn("Could not parse JSON cleanly, using fallback parameters.");
-      // Substituímos as crases problemáticas por aspas simples na string de segurança
-      const fallbackSql = "SELECT * FROM " + table + " LIMIT 10;";
-
-      const sqlMatch = cleanedText.match(/"sql"\s*:\s*"([^"]+)"/);
-      const explanationMatch = cleanedText.match(
-        /"explanation"\s*:\s*"([^"]+)"/,
-      );
-
+      console.warn("Não foi possível processar o JSON limpo, utilizando parâmetros de fallback.");
+      const fallbackSql = "SELECT * FROM `" + table + "` LIMIT 10;";
       resultJson = {
-        sql: sqlMatch
-          ? sqlMatch[1].replace(/\\n/g, "\n").replace(/\\"/g, '"')
-          : fallbackSql,
-        explanation: explanationMatch
-          ? explanationMatch[1].replace(/\\n/g, "\n")
-          : "Comando SQL gerado automaticamente.",
-        suggestions: [
-          "Verifique os nomes de colunas e índices para performance.",
-        ],
+        sql: fallbackSql,
+        explanation: "Comando SQL gerado automaticamente.",
+        suggestions: ["Verifique os nomes de colunas e índices para performance."],
       };
     }
 
@@ -301,42 +270,20 @@ Importante:
       suggestions: resultJson.suggestions || [],
     });
   } catch (error: any) {
-    console.error("Gemini Generation error:", error);
-    const statusCode =
-      error.status || (error.code ? parseInt(error.code) : 500);
+    console.error("Erro na geração com o Groq:", error);
     const errorMessageString = error.message || "";
 
-    if (
-      statusCode === 429 ||
-      errorMessageString.includes("429") ||
-      errorMessageString.includes("Quota exceeded")
-    ) {
+    if (errorMessageString.includes("429") || errorMessageString.includes("Rate limit")) {
       return res.status(200).json({
         success: false,
-        message:
-          "A cota diária de requisições gratuitas do Gemini foi atingida para este projeto (Limite: 20 requisições/dia).",
+        message: "O limite de requisições da API do Groq foi atingido temporariamente.",
       });
     }
 
-    if (
-      statusCode === 503 ||
-      errorMessageString.includes("503") ||
-      errorMessageString.includes("temporary") ||
-      statusCode === "UNAVAILABLE"
-    ) {
-      return res.status(200).json({
-        success: false,
-        message:
-          "Os servidores do Google Gemini estão experimentando uma sobrecarga temporária. Por favor, clique novamente em alguns segundos.",
-      });
-    }
-
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Falha ao gerar comando SQL via IA do Gemini.",
-      });
+    res.status(500).json({
+      success: false,
+      message: "Falha ao gerar comando SQL via IA do Groq.",
+    });
   }
 });
 
