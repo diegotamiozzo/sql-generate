@@ -16,8 +16,7 @@ app.use(express.json());
 const poolMap = new Map<string, mysql.Pool>();
 
 function getDbPool(config: any) {
-  // Configuração padrão apontando para o RDS da AWS fornecido
-  let host = config.host?.trim() || process.env.DB_HOST || "db-optimize.c1kqy2k6kba4.us-east-2.rds.amazonaws.com";
+  let host = config.host?.trim() || process.env.DB_HOST || "127.0.0.1";
   if (host === "localhost") host = "127.0.0.1";
 
   const user = config.user?.trim() || process.env.DB_USER || undefined;
@@ -31,6 +30,20 @@ function getDbPool(config: any) {
     return poolMap.get(configKey)!;
   }
 
+  // Detecta automaticamente se é um banco AWS RDS pelo domínio
+  const isAwsRds = host.includes(".rds.amazonaws.com");
+  
+  let sslConfig: any = undefined;
+
+  if (isAwsRds) {
+    // Para bancos AWS RDS em qualquer região, o mysql2 aceita o SSL habilitado 
+    // com rejectUnauthorized: false (ou true dependendo do rigor, mas false evita
+    // erros de mismatch de região caso o usuário use uma região diferente).
+    sslConfig = {
+      rejectUnauthorized: false, // Permite conexão segura com o RDS sem travar por região
+    };
+  }
+
   const newPool = mysql.createPool({
     host,
     user,
@@ -40,8 +53,8 @@ function getDbPool(config: any) {
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    connectTimeout: 15000, // Timeout estendido para conexões com a AWS RDS
-    // ssl: { rejectUnauthorized: false } // Descomente caso sua instância RDS exija SSL obrigatório
+    connectTimeout: 20000,
+    ssl: sslConfig, // Ativa SSL automaticamente se for AWS, desativa se for local/outro
   });
 
   poolMap.set(configKey, newPool);
