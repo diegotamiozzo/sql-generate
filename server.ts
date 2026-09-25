@@ -65,14 +65,7 @@ function getDbPool(config: any) {
 app.post("/api/db/connect", async (req, res) => {
   try {
     const { host, user, password, port } = req.body;
-
-    if (!host?.trim() && !user?.trim() && !process.env.DB_HOST) {
-      return res.status(200).json({
-        success: false,
-        databases: [],
-        message: "Aguardando a inserção dos parâmetros de conexão.",
-      });
-    }
+    console.log(`Tentando conectar em: ${host || process.env.DB_HOST} com usuário: ${user || process.env.DB_USER}`);
 
     const pool = getDbPool({ host, user, password, port });
     const [rows]: [any[], any] = await pool.execute("SHOW DATABASES;");
@@ -81,14 +74,14 @@ app.post("/api/db/connect", async (req, res) => {
     res.json({
       success: true,
       databases,
-      serverInfo: `AWS RDS MySQL @ ${host || "db-optimize..."}`,
+      serverInfo: `MySQL RDS @ ${host || "AWS"}`,
     });
   } catch (error: any) {
-    // Log seguro sem expor credenciais
-    console.error("Erro de conexão AWS RDS:", error.message);
+    // LOG DETALHADO NO RENDER CONSOLE
+    console.error("ERRO COMPLETO DE CONEXÃO AWS RDS:", error);
     res.status(500).json({
       success: false,
-      message: "Falha ao conectar ao AWS RDS. Verifique se o IP da sua máquina está liberado no Security Group da AWS.",
+      message: `Erro ao conectar: ${error.message}`,
     });
   }
 });
