@@ -12,38 +12,26 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// Gerenciador de pools de conexão para evitar sobrecarregar o MySQL
-let poolCache: mysql.Pool | null = null;
-let currentPoolConfigKey = "";
+// Gerenciador de pools de conexão em formato Map para isolar clientes/configurações com segurança
+const poolMap = new Map<string, mysql.Pool>();
 
-// Helper para gerar/recuperar um Pool de Conexões de forma segura
 function getDbPool(config: any) {
-  // Trata strings vazias ou espaços vindos do front-end
-  let host = config.host?.trim() || process.env.DB_HOST || "127.0.0.1";
-  if (host === "localhost") host = "127.0.0.1"; // Evita problemas de resolução IPv6 (::1)
+  // Configuração padrão apontando para o RDS da AWS fornecido
+  let host = config.host?.trim() || process.env.DB_HOST || "db-optimize.c1kqy2k6kba4.us-east-2.rds.amazonaws.com";
+  if (host === "localhost") host = "127.0.0.1";
 
   const user = config.user?.trim() || process.env.DB_USER || undefined;
-  const password =
-    config.password?.trim() || process.env.DB_PASSWORD || undefined;
-  const port =
-    parseInt(config.port) ||
-    (process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 3306);
-  const database =
-    config.database?.trim() || process.env.DB_DATABASE || undefined;
+  const password = config.password?.trim() || process.env.DB_PASSWORD || undefined;
+  const port = parseInt(config.port) || (process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 3306);
+  const database = config.database?.trim() || process.env.DB_DATABASE || undefined;
 
-  // Cria uma chave única para identificar se a configuração de conexão mudou na tela
   const configKey = `${host}:${port}:${user}:${database}`;
 
-  if (poolCache && currentPoolConfigKey === configKey) {
-    return poolCache;
+  if (poolMap.has(configKey)) {
+    return poolMap.get(configKey)!;
   }
 
-  // Se a configuração mudou ou o pool não existe, fecha o antigo e cria um novo
-  if (poolCache) {
-    poolCache.end().catch(() => {});
-  }
-
-  poolCache = mysql.createPool({
+  const newPool = mysql.createPool({
     host,
     user,
     password,
@@ -52,11 +40,12 @@ function getDbPool(config: any) {
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    connectTimeout: 5000,
+    connectTimeout: 15000, // Timeout estendido para conexões com a AWS RDS
+    // ssl: { rejectUnauthorized: false } // Descomente caso sua instância RDS exija SSL obrigatório
   });
 
-  currentPoolConfigKey = configKey;
-  return poolCache;
+  poolMap.set(configKey, newPool);
+  return newPool;
 }
 
 // 1. API: Connect and Get Databases
@@ -64,7 +53,6 @@ app.post("/api/db/connect", async (req, res) => {
   try {
     const { host, user, password, port } = req.body;
 
-    // Se o front enviar dados nulos/vazios e não houver fallback no .env, barramos aqui de forma limpa
     if (!host?.trim() && !user?.trim() && !process.env.DB_HOST) {
       return res.status(200).json({
         success: false,
@@ -80,14 +68,14 @@ app.post("/api/db/connect", async (req, res) => {
     res.json({
       success: true,
       databases,
-      serverInfo: `MariaDB/MySQL @ ${host || "127.0.0.1"}`,
+      serverInfo: `AWS RDS MySQL @ ${host || "db-optimize..."}`,
     });
   } catch (error: any) {
-    console.error("Erro de conexão detectado:", error.message);
+    // Log seguro sem expor credenciais
+    console.error("Erro de conexão AWS RDS:", error.message);
     res.status(500).json({
       success: false,
-      message:
-        "Falha ao conectar ao banco de dados. Verifique suas credenciais e se o serviço está ativo.",
+      message: "Falha ao conectar ao AWS RDS. Verifique se o IP da sua máquina está liberado no Security Group da AWS.",
     });
   }
 });
@@ -97,13 +85,11 @@ app.post("/api/db/tables", async (req, res) => {
   try {
     const { host, user, password, port, database } = req.body;
     if (!database?.trim()) {
-      return res
-        .status(200)
-        .json({
-          success: false,
-          tables: [],
-          message: "Selecione um banco de dados.",
-        });
+      return res.status(200).json({
+        success: false,
+        tables: [],
+        message: "Selecione um banco de dados.",
+      });
     }
 
     const pool = getDbPool({ host, user, password, port, database });
@@ -112,44 +98,33 @@ app.post("/api/db/tables", async (req, res) => {
 
     res.json({ success: true, tables });
   } catch (error: any) {
-    console.error("Erro ao buscar tabelas:", error.message);
-    res
-      .status(500)
-      .json({ success: false, message: "Erro ao listar as tabelas do banco." });
+    console.error("Erro ao buscar tabelas no RDS:", error.message);
+    res.status(500).json({ success: false, message: "Erro ao listar as tabelas do banco AWS." });
   }
 });
 
-// 3. API: Get Schema Columns and Sample Rows (Com proteção contra SQL Injection)
+// 3. API: Get Schema Columns and Sample Rows
 app.post("/api/db/schema", async (req, res) => {
   try {
     const { host, user, password, port, database, table } = req.body;
     if (!database?.trim() || !table?.trim()) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Banco de dados e tabela são obrigatórios.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Banco de dados e tabela são obrigatórios.",
+      });
     }
 
-    // Validação estrita do nome da tabela (permite apenas letras, números e underscores)
     const safeTableRegex = /^[a-zA-Z0-9_]+$/;
     if (!safeTableRegex.test(table)) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message:
-            "Nome de tabela inválido detectado por motivos de segurança.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Nome de tabela inválido detectado por motivos de segurança.",
+      });
     }
 
     const pool = getDbPool({ host, user, password, port, database });
 
-    // DESCRIBE Table de forma segura usando o nome validado pelo regex
-    const [columnsRows]: [any[], any] = await pool.execute(
-      `DESCRIBE \`${table}\`;`,
-    );
+    const [columnsRows]: [any[], any] = await pool.execute(`DESCRIBE \`${table}\`;`);
     const columns = columnsRows.map((col: any) => ({
       field: col.Field,
       type: col.Type,
@@ -159,59 +134,43 @@ app.post("/api/db/schema", async (req, res) => {
       extra: col.Extra,
     }));
 
-    // Coleta as primeiras 5 linhas para a amostragem de dados
-    const [previewRows]: [any[], any] = await pool.execute(
-      `SELECT * FROM \`${table}\` LIMIT 5;`,
-    );
+    const [previewRows]: [any[], any] = await pool.execute(`SELECT * FROM \`${table}\` LIMIT 5;`);
 
     res.json({ success: true, columns, preview: previewRows });
   } catch (error: any) {
-    console.error("Erro ao obter metadados da tabela:", error.message);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Erro ao obter estrutura e dados da tabela.",
-      });
+    console.error("Erro ao obter metadados do RDS:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Erro ao obter estrutura e dados da tabela na AWS.",
+    });
   }
 });
 
-// 4. API: Generate SQL prompt using Groq (com openai/gpt-oss-20b)
+// 4. API: Generate SQL prompt using Groq
 app.post("/api/db/generate-sql", async (req, res) => {
   try {
     const { database, table, columns, preview, prompt } = req.body;
 
     if (!prompt) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Pergunta/prompt é obrigatório." });
+      return res.status(400).json({ success: false, message: "Pergunta/prompt é obrigatório." });
     }
 
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
       return res.status(500).json({
         success: false,
-        message:
-          "Chave da API do Groq (GROQ_API_KEY) não configurada no ambiente do servidor (.env).",
+        message: "Chave da API do Groq (GROQ_API_KEY) não configurada no ambiente (.env).",
       });
     }
 
-    // Inicializa o cliente do Groq
     const groq = new Groq({ apiKey });
 
     const columnsContext =
       columns && Array.isArray(columns)
-        ? columns
-            .map(
-              (c: any) =>
-                `${c.field} (${c.type}${c.key ? `, Chave: ${c.key}` : ""})`,
-            )
-            .join(", ")
+        ? columns.map((c: any) => `${c.field} (${c.type}${c.key ? `, Chave: ${c.key}` : ""})`).join(", ")
         : "Estrutura não informada";
 
-    const previewContext = preview
-      ? JSON.stringify(preview, null, 2)
-      : "Sem dados de prévia";
+    const previewContext = preview ? JSON.stringify(preview, null, 2) : "Sem dados de prévia";
 
     const systemPrompt = `Você é um desenvolvedor e administrador de banco de dados especialista em MariaDB e MySQL SQL. Você DEVE responder estritamente no formato JSON puro, contendo exatamente as chaves: "sql" (string com a consulta SQL válida), "explanation" (string com a explicação em português) e "suggestions" (array de strings com sugestões). Não inclua blocos de código markdown como \`\`\`json.`;
 
@@ -224,12 +183,12 @@ ${previewContext}
 
 Pergunta do Usuário: "${prompt}"
 
-Por favor, gere uma consulta SQL válida para responder à pergunta do usuário sobre essa tabela.
+Por favor, gere uma consulta SQL válida para responder à pergunta do usuário sobre essa tabela do AWS RDS.
 Importante:
-1. Retorne APENAS um comando SQL válido que possa ser executado no MySQL/MariaDB.
-2. Certifique-se de usar o nome correto das colunas que constam na lista de colunas fornecida.
+1. Retorne APENAS um comando SQL válido executável no MySQL/MariaDB.
+2. Use o nome correto das colunas fornecidas.
 3. Explique passo a passo o comando em português simples.
-4. Dê opiniões úteis ou sugestões de otimização/relacionadas na lista de sugestões.
+4. Dê opiniões úteis ou sugestões de otimização/relacionadas.
 `;
 
     const chatCompletion = await groq.chat.completions.create({
@@ -254,12 +213,12 @@ Importante:
     try {
       resultJson = JSON.parse(cleanedText);
     } catch (parseError) {
-      console.warn("Não foi possível processar o JSON limpo, utilizando parâmetros de fallback.");
+      console.warn("Não foi possível processar o JSON limpo do Groq, utilizando fallback.");
       const fallbackSql = "SELECT * FROM `" + table + "` LIMIT 10;";
       resultJson = {
         sql: fallbackSql,
         explanation: "Comando SQL gerado automaticamente.",
-        suggestions: ["Verifique os nomes de colunas e índices para performance."],
+        suggestions: ["Verifique os nomes de colunas e índices para performance na AWS."],
       };
     }
 
@@ -287,17 +246,15 @@ Importante:
   }
 });
 
-// 5. API: Execute generated query (Apenas comandos de leitura)
+// 5. API: Execute generated query
 app.post("/api/db/execute-query", async (req, res) => {
   try {
     const { host, user, password, port, database, sql } = req.body;
     if (!database?.trim() || !sql?.trim()) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Banco de dados e SQL são obrigatórios.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Banco de dados e SQL são obrigatórios.",
+      });
     }
 
     const normalizedSql = sql.trim().toLowerCase();
@@ -314,8 +271,7 @@ app.post("/api/db/execute-query", async (req, res) => {
     if (isDangerous || !isValidQuery) {
       return res.status(400).json({
         success: false,
-        message:
-          "Por motivos de segurança, apenas consultas de leitura (SELECT, SHOW, DESCRIBE) são permitidas no console.",
+        message: "Por motivos de segurança, apenas consultas de leitura (SELECT, SHOW, DESCRIBE) são permitidas.",
       });
     }
 
@@ -328,14 +284,11 @@ app.post("/api/db/execute-query", async (req, res) => {
       count: Array.isArray(rows) ? rows.length : 0,
     });
   } catch (error: any) {
-    console.error("Erro na execução da consulta:", error.message);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message:
-          error.message || "Erro ao executar consulta no banco de dados.",
-      });
+    console.error("Erro na execução da consulta no RDS:", error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Erro ao executar consulta no AWS RDS.",
+    });
   }
 });
 
